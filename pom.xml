@@ -1,11 +1,13 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.sarwarbhuiyan.kafka.tools</groupId>
-  <artifactId>kafka-duplicate-detector</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
-  <name>Simple tool to detect duplicates in a topic</name>
-  
-  <dependencies>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.sarwarbhuiyan.kafka.tools</groupId>
+	<artifactId>kafka-duplicate-detector</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>Simple tool to detect duplicates in a topic</name>
+
+	<dependencies>
 		<dependency>
 			<groupId>org.apache.kafka</groupId>
 			<artifactId>kafka-clients</artifactId>
@@ -28,6 +30,11 @@
 			<version>1.15</version>
 		</dependency>
 
+		<dependency>
+			<groupId>org.eclipse.collections</groupId>
+			<artifactId>eclipse-collections</artifactId>
+			<version>11.1.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
@@ -54,6 +61,16 @@
 									<mainClass>com.sarwarbhuiyan.kafka.tools.KafkaDuplicateDetector</mainClass>
 								</transformer>
 							</transformers>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+									</excludes>
+								</filter>
+							</filters>
 						</configuration>
 					</execution>
 				</executions>
@@ -63,8 +80,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.8.1</version>
 				<configuration>
-					<source>1.8</source>
-					<target>1.8</target>
+					<source>11</source>
+					<target>11</target>
 				</configuration>
 			</plugin>
 		</plugins>

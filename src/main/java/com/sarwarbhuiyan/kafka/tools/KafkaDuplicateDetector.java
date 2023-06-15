@@ -2,8 +2,8 @@ package com.sarwarbhuiyan.kafka.tools;
 
 import java.io.FileInputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,8 +16,11 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.eclipse.collections.api.factory.primitive.ObjectByteMaps;
+import org.eclipse.collections.api.map.primitive.MutableObjectByteMap;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Help.Visibility;
@@ -44,11 +47,26 @@ public class KafkaDuplicateDetector implements Runnable {
       description = "Topic name to scan", showDefaultValue = Visibility.ALWAYS)
   private String topic = "";
   
+  @Option(required = false, names = {"-m", "--max-messages"},
+      description = "Maximum number of messages to scan", showDefaultValue = Visibility.ALWAYS)
+  private Integer maxMessages = -1;
+  
+  @Option(required = false, names = {"-st", "--start-time"},
+      description = "Approximate start time (yyyy-MM-ddTHH:mm:ssZ)", showDefaultValue = Visibility.ALWAYS, converter = DateTimeConverter.class)
+  private Instant approximateStartTime;
+  
+  @Option(required = false, names = {"-et", "--end-time"},
+      description = "Approximate end time (yyyy-MM-ddTHH:mm:ssZ)", showDefaultValue = Visibility.ALWAYS, converter = DateTimeConverter.class)
+  private Instant approximateEndTime;
+  
+  
+  
   @Spec
   CommandSpec spec;
   
   
   private final AtomicBoolean start = new AtomicBoolean(false);
+  
   
   
   
@@ -81,6 +99,15 @@ public class KafkaDuplicateDetector implements Runnable {
           .map(p -> new TopicPartition(topic, p.partition())).collect(Collectors.toList());
       
       consumer.assign(partitions);
+      if(approximateStartTime !=null) 
+      {
+        Map<TopicPartition, Long> partitionTimestampMap = partitions.stream()
+            .collect(Collectors.toMap(tp -> tp, tp -> approximateStartTime.toEpochMilli()-1000)); //1s before
+        
+        Map<TopicPartition, OffsetAndTimestamp> partitionOffsetMap = consumer.offsetsForTimes(partitionTimestampMap);
+        partitionOffsetMap.forEach((tp, offsetAndTimestamp) -> consumer.seek(tp, offsetAndTimestamp.offset()));
+      }
+
       
       Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
       Map<Integer, Long> endOffsets = consumer.endOffsets(partitions).entrySet().stream().collect(Collectors.toMap(
@@ -88,7 +115,8 @@ public class KafkaDuplicateDetector implements Runnable {
           entry -> entry.getValue()
           ));
       
-      Map<String, Integer> messageCount = new HashMap<>();
+     // Map<String, Byte> messageCount = new HashMap<>();
+      MutableObjectByteMap<String> messageCount = ObjectByteMaps.mutable.empty();
       Map<Integer, Boolean> partitionDoneStatus = endOffsets.entrySet().stream().collect(
           Collectors.toMap(
                 entry -> entry.getKey(),
@@ -107,10 +135,12 @@ public class KafkaDuplicateDetector implements Runnable {
         if(emptyPollCount > 10)
           break;
           
-        org.apache.kafka.common.serialization.IntegerDeserializer intDeserializer = new org.apache.kafka.common.serialization.IntegerDeserializer();
-        
+         
         Map<Integer, Long> pollLatestOffsetsMap = new HashMap<>();
         for(ConsumerRecord<byte[], byte[]> record: records) {
+          
+          
+          if(approximateEndTime!=null && record.timestamp() >= (approximateEndTime.toEpochMilli()+1000)) continue; //+1s more than specified.
           totalMessageCount++;
           //messageDigest.update(record.value());
           //byte[] md5Hash = messageDigest.digest();
@@ -121,13 +151,16 @@ public class KafkaDuplicateDetector implements Runnable {
           
           if(messageCount.containsKey(md5Hash)) {
             //System.out.println("Found duplicate "+record.value()+" at partition "+record.partition()+" offset "+record.offset());
-            messageCount.put(md5Hash, messageCount.get(md5Hash)+1);
+            
+            messageCount.put(md5Hash, (byte)(messageCount.get(md5Hash)+1));
           }
           else {
-            messageCount.put(md5Hash, 1);
+            
+            messageCount.put(md5Hash, (byte) 1);
           }
           pollLatestOffsetsMap.put(record.partition(), record.offset());
           //System.out.println("scanned "+record.partition()+" "+record.offset());
+          if(maxMessages > 0 && totalMessageCount >= maxMessages) break;
         }
         
         for(Map.Entry<Integer,Long> e: pollLatestOffsetsMap.entrySet()) {
@@ -137,6 +170,8 @@ public class KafkaDuplicateDetector implements Runnable {
             partitionDoneStatus.put(e.getKey(), Boolean.TRUE);
           }
         }
+        
+        if(maxMessages > 0 && totalMessageCount >= maxMessages) break;
         
         if(partitionDoneStatus.values().stream().allMatch(x -> x)) {
           System.out.println("Finishing reading till end offsets");
@@ -149,25 +184,26 @@ public class KafkaDuplicateDetector implements Runnable {
       long endTime = System.currentTimeMillis();
       System.out.println("Total run time: "+((endTime-startTime)/(1000))+" seconds.");
       // print stats
-      Map<String, Integer> dupesCount = messageCount.entrySet().stream().filter(e -> e.getValue() > 1).collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+      //MutableObjectByteMap dupesCount = messageCount..stream().filter(e -> e.getValue().byteValue() > 1).collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+      int dupesCount = messageCount.select(b -> b > (byte)1).size();
+      
       System.out.println("Total Messages: "+totalMessageCount);
-      System.out.println("Dupes Found: "+dupesCount.size());
-      System.out.println("Percentage: "+((100.0*dupesCount.size())/totalMessageCount));
+      System.out.println("Dupes Found: "+dupesCount);
+      System.out.println("Percentage: "+((100.0*dupesCount)/totalMessageCount));
 
       final AtomicInteger i = new AtomicInteger(2);
 
       while(true) {
-
-        Map<String, Integer> frequencyCount = messageCount.entrySet().stream().filter(e -> e.getValue() == i.get()).collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+        int frequencyCount =  messageCount.select(b -> b > i.byteValue()).size();
         
-        if(frequencyCount.size()>0)
-          System.out.println("Frequency (n="+i+")  : "+frequencyCount.size());
+        if(frequencyCount>0)
+          System.out.println("Frequency (n="+i+")  : "+frequencyCount);
         else
           break;
         i.incrementAndGet();
       }
       
-      System.out.println();
+      System.out.println("Memory usage after="+(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/(1000*1000)+"M");
       
       //messageCount.forEach((k, v) -> { if(v > 1) System.out.println(k+", "+v);} );
       
