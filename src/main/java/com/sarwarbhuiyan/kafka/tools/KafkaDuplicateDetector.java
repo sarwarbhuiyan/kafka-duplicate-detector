@@ -19,8 +19,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.eclipse.collections.api.factory.primitive.ObjectByteMaps;
-import org.eclipse.collections.api.map.primitive.MutableObjectByteMap;
+import org.eclipse.collections.api.factory.primitive.ObjectIntMaps;
+import org.eclipse.collections.api.map.primitive.MutableObjectIntMap;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Help.Visibility;
@@ -116,7 +116,7 @@ public class KafkaDuplicateDetector implements Runnable {
           ));
       
      // Map<String, Byte> messageCount = new HashMap<>();
-      MutableObjectByteMap<String> messageCount = ObjectByteMaps.mutable.empty();
+      MutableObjectIntMap<String> messageCount = ObjectIntMaps.mutable.empty();
       Map<Integer, Boolean> partitionDoneStatus = endOffsets.entrySet().stream().collect(
           Collectors.toMap(
                 entry -> entry.getKey(),
@@ -125,6 +125,7 @@ public class KafkaDuplicateDetector implements Runnable {
       
       int emptyPollCount = 0;
       int totalMessageCount = 0;
+      int dupesCount = 0;
       while(true) {
       
         ConsumerRecords<byte[], byte[]> records = consumer.poll(Duration.ofMillis(100));
@@ -151,8 +152,9 @@ public class KafkaDuplicateDetector implements Runnable {
           
           if(messageCount.containsKey(md5Hash)) {
             //System.out.println("Found duplicate "+record.value()+" at partition "+record.partition()+" offset "+record.offset());
-            
-            messageCount.put(md5Hash, (byte)(messageCount.get(md5Hash)+1));
+            int newCount = 1 + messageCount.get(md5Hash);
+            messageCount.put(md5Hash, newCount);
+            dupesCount = dupesCount + 1;
           }
           else {
             
@@ -185,11 +187,12 @@ public class KafkaDuplicateDetector implements Runnable {
       System.out.println("Total run time: "+((endTime-startTime)/(1000))+" seconds.");
       // print stats
       //MutableObjectByteMap dupesCount = messageCount..stream().filter(e -> e.getValue().byteValue() > 1).collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
-      int dupesCount = messageCount.select(b -> b > (byte)1).size();
+      
       
       System.out.println("Total Messages: "+totalMessageCount);
-      System.out.println("Dupes Found: "+dupesCount);
-      System.out.println("Percentage: "+((100.0*dupesCount)/totalMessageCount));
+      System.out.println("Unique keys: "+messageCount.size());
+      System.out.println("Dupes Found (dupesCount): "+dupesCount);
+      System.out.println("Percentage: "+((100.0*dupesCount)/totalMessageCount)+"%");
 
       final AtomicInteger i = new AtomicInteger(2);
 
