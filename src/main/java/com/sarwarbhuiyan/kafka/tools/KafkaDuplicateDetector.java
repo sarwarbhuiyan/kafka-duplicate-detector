@@ -19,7 +19,11 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.eclipse.collections.api.factory.primitive.IntIntMaps;
+import org.eclipse.collections.api.factory.primitive.ObjectByteMaps;
 import org.eclipse.collections.api.factory.primitive.ObjectIntMaps;
+import org.eclipse.collections.api.map.primitive.MutableIntIntMap;
+import org.eclipse.collections.api.map.primitive.MutableObjectByteMap;
 import org.eclipse.collections.api.map.primitive.MutableObjectIntMap;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -116,7 +120,10 @@ public class KafkaDuplicateDetector implements Runnable {
           ));
       
      // Map<String, Byte> messageCount = new HashMap<>();
-      MutableObjectIntMap<String> messageCount = ObjectIntMaps.mutable.empty();
+      MutableObjectByteMap<String> messageCount = ObjectByteMaps.mutable.empty();
+      MutableIntIntMap frequencyCount = IntIntMaps.mutable.empty();
+      
+      
       Map<Integer, Boolean> partitionDoneStatus = endOffsets.entrySet().stream().collect(
           Collectors.toMap(
                 entry -> entry.getKey(),
@@ -152,8 +159,14 @@ public class KafkaDuplicateDetector implements Runnable {
           
           if(messageCount.containsKey(md5Hash)) {
             //System.out.println("Found duplicate "+record.value()+" at partition "+record.partition()+" offset "+record.offset());
-            int newCount = 1 + messageCount.get(md5Hash);
+            byte newCount = (byte) (1 + messageCount.get(md5Hash));
             messageCount.put(md5Hash, newCount);
+            
+            if(frequencyCount.containsKey(newCount))
+              frequencyCount.put(newCount, frequencyCount.get(newCount)+1);
+            else
+              frequencyCount.put(newCount, 1);
+            
             dupesCount = dupesCount + 1;
           }
           else {
@@ -194,16 +207,14 @@ public class KafkaDuplicateDetector implements Runnable {
       System.out.println("Dupes Found (dupesCount): "+dupesCount);
       System.out.println("Percentage: "+((100.0*dupesCount)/totalMessageCount)+"%");
 
-      final AtomicInteger i = new AtomicInteger(2);
-
-      while(true) {
-        int frequencyCount =  messageCount.select(b -> b > i.byteValue()).size();
+      int i = 2;
+      
+      while(i <= 10) {
+        int frequencyCountValue =  frequencyCount.get(i);
         
-        if(frequencyCount>0)
-          System.out.println("Frequency (n="+i+")  : "+frequencyCount);
-        else
-          break;
-        i.incrementAndGet();
+        if(frequencyCountValue > 0)
+          System.out.println("Frequency (n="+i+")  : "+frequencyCount.get(i));
+        i++;
       }
       
       System.out.println("Memory usage after="+(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/(1000*1000)+"M");
