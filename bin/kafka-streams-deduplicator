@@ -1,0 +1,2 @@
+#!/bin/sh
+java -cp target/kafka-duplicate-detector-0.0.1-SNAPSHOT.jar com.sarwarbhuiyan.kafka.tools.KafkaStreamsDeduplicator $@
