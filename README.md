@@ -1,6 +1,8 @@
 # Introduction
 
-This little utility scans a given topic and creates a map of MD5 checksums to detect the amount of duplicates present.
+This little utility scans a given topic and creates a map of MD5 checksums to detect the amount of duplicates present. It can optionally take in --max-messages or --start-time and --end-time
+to cut down on the memory usage. The implementation depends on in-memory data structures and will likely not work on really large topics. For those, you may have to read the data into a big
+search engine like Elasticsearch to do aggregations. 
 
 # Build
 
@@ -11,7 +13,31 @@ This little utility scans a given topic and creates a map of MD5 checksums to de
 # Usage
 
 ```
-
+Usage: kafka-duplicate-detector [-hV] [-b=<bootstrapServers>]
+                                [-c=<commandConfigFile>]
+                                [-et=<approximateEndTime>] [-m=<maxMessages>]
+                                [-st=<approximateStartTime>] -t=<topic>
+A simply utility to detect duplicates in a topic
+  -b, --bootstrap-server=<bootstrapServers>
+                        List of Kafka Bootstrap servers
+                          Default: localhost:9092
+  -c, --command-config=<commandConfigFile>
+                        Config file containing properties like security
+                          credentials, etc
+                          Default:
+      -et, --end-time=<approximateEndTime>
+                        Approximate end time (yyyy-MM-ddTHH:mm:ssZ)
+                          Default: null
+  -h, --help            Show this help message and exit.
+  -m, --max-messages=<maxMessages>
+                        Maximum number of messages to scan
+                          Default: -1
+      -st, --start-time=<approximateStartTime>
+                        Approximate start time (yyyy-MM-ddTHH:mm:ssZ)
+                          Default: null
+  -t, --topic=<topic>   Topic name to scan
+                          Default:
+  -V, --version         Print version information and exit.
 ```
 
 
